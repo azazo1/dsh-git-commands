@@ -4,7 +4,6 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { brandString } from '@deepseek-ai/dsh-brand'
 import type { CommandDefinitionId, CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Config } from '../config.ts'
@@ -100,7 +99,8 @@ async function executeCommand(
  */
 export function registerGitCommands(ctx: Context, config: Config): () => void {
   const disposers = COMMAND_SPECS.map(spec => ctx.commands.register({
-    definitionId: brandString<CommandDefinitionId>(spec.definitionId),
+    // definitionId 只是插件自有的稳定身份, 这里直接用字面量, 免去额外的 brand 依赖.
+    definitionId: spec.definitionId as CommandDefinitionId,
     name: spec.name,
     description: spec.description,
     input: { hint: spec.inputHint },
