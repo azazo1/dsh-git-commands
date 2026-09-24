@@ -35,10 +35,10 @@ export type RepoResolution =
   | { ok: true; repo: string }
   | { ok: false; message: string }
 
-/** 展开开头的 `~` 为当前用户家目录. */
+/** 展开开头的 `~` 为当前用户家目录, 同时接受 `~/` 与 Windows 风格的 `~\`. */
 function expandHome(token: string): string {
   if (token === '~') return homedir()
-  if (token.startsWith('~/')) return resolvePath(homedir(), token.slice(2))
+  if (token.startsWith('~/') || token.startsWith('~\\')) return resolvePath(homedir(), token.slice(2))
   return token
 }
 

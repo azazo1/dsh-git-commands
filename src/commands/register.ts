@@ -7,6 +7,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CommandDefinitionId, CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Config } from '../config.ts'
+import { readRuntimeFacts, renderRuntimeFact } from '../environment.ts'
 import { GitUnavailableError } from '../git/exec.ts'
 import { parseTarget, resolveDirectory, resolveRepo } from '../git/target.ts'
 import { GIT_COMMANDS_SOURCE_KIND } from '../message-source.ts'
@@ -23,12 +24,14 @@ function describeError(error: unknown): string {
  *
  * @param spec - 命令规格.
  * @param config - 已解析的插件配置.
+ * @param runtimeFact - 本次部署的平台与默认 shell 事实.
  * @param invocation - DSH 传入的调用信息 (agent, 原始输入, 取消信号).
  * @returns 命令结果; 采集失败时返回错误文本, 不注入也不唤醒.
  */
 async function executeCommand(
   spec: CommandSpec,
   config: Config,
+  runtimeFact: string,
   invocation: CommandInvocation,
 ): Promise<CommandResult> {
   const usage = `/${spec.name} ${spec.inputHint}`.trim()
@@ -67,7 +70,7 @@ async function executeCommand(
   const text = renderInjection({
     prompt: config[spec.promptField],
     request: rawInput.length === 0 ? `/${spec.name}` : `/${spec.name} ${rawInput}`,
-    facts: collected.facts,
+    facts: [...collected.facts, runtimeFact],
     sections: collected.sections,
   })
 
@@ -98,13 +101,14 @@ async function executeCommand(
  * @returns 注销全部命令的 disposer.
  */
 export function registerGitCommands(ctx: Context, config: Config): () => void {
+  const runtimeFact = renderRuntimeFact(readRuntimeFacts())
   const disposers = COMMAND_SPECS.map(spec => ctx.commands.register({
     // definitionId 只是插件自有的稳定身份, 这里直接用字面量, 免去额外的 brand 依赖.
     definitionId: spec.definitionId as CommandDefinitionId,
     name: spec.name,
     description: spec.description,
     input: { hint: spec.inputHint },
-    handler: (invocation: CommandInvocation) => executeCommand(spec, config, invocation),
+    handler: (invocation: CommandInvocation) => executeCommand(spec, config, runtimeFact, invocation),
   }))
   return () => {
     for (const dispose of disposers) dispose()

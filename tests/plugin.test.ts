@@ -99,6 +99,7 @@ describe('/commit handler', () => {
     const text = message?.content.map(block => (block.type === 'text' ? block.text : '')).join('') ?? ''
     expect(text).toContain('## 命令上下文')
     expect(text).toContain('+hello')
+    expect(text).toContain('运行环境: ')
   })
 
   it('目标目录不存在时返回错误且不唤醒模型', async () => {

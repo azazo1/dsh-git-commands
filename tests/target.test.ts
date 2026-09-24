@@ -33,6 +33,11 @@ describe('parseTarget', () => {
     expect(result).toEqual({ ok: true, target: { path: join(homedir(), 'project') } })
   })
 
+  it('也接受 Windows 风格的家目录写法', () => {
+    const result = parseTarget('~\\project', { usage: USAGE })
+    expect(result).toEqual({ ok: true, target: { path: join(homedir(), 'project') } })
+  })
+
   it('允许 /tag 的版本号位置参数', () => {
     const result = parseTarget('v0.2.0 /srv/project', {
       cwd: '/tmp/work',
