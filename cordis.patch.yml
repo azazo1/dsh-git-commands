@@ -1,0 +1,4 @@
+# dsh-git-commands bundle patch: 通过 profile 的 node_modules 解析并挂载 Host 半区.
+- insert:
+    - id: dsh-git-commands
+      name: dsh-git-commands

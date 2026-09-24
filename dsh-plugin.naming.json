@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "policy": "dsh-plugin-naming/v1",
+  "plugin": {
+    "namespace": "azazo1",
+    "name": "git-commands",
+    "coordinate": "azazo1/git-commands",
+    "packageName": "dsh-git-commands"
+  },
+  "names": {
+    "pluginNames": [
+      "dsh-git-commands"
+    ],
+    "loaderIds": [
+      "dsh-git-commands"
+    ],
+    "services": [],
+    "tools": [],
+    "commands": [
+      "commit",
+      "commit-fast",
+      "tag",
+      "push",
+      "repo-create"
+    ],
+    "skills": [],
+    "skillProviders": [],
+    "events": [],
+    "settingsNamespaces": [],
+    "routes": []
+  }
+}
