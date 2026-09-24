@@ -41,7 +41,7 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
   {
     name: 'commit',
     definitionId: 'dsh-git-commands#commit',
-    description: '附带 staged 状态, staged diff 与历史风格, 生成 commit message 与等价命令',
+    description: '附带提交范围与对应 diff (暂存区为空时改用自上一次 commit 以来的全部改动) 与历史风格, 生成 commit message 与等价命令',
     inputHint: '[path]',
     promptField: 'commitPrompt',
     allowVersion: false,

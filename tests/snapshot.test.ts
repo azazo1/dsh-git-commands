@@ -55,6 +55,41 @@ describe('collectCommitContext', () => {
     expect(history?.body).toContain('feat: 加入初始文件')
     expect(history?.body).toContain('chore: 初始化仓库')
   })
+
+  it('暂存区为空时附上自上一次 commit 以来的全部改动与未跟踪文件内容', async () => {
+    const repo = await createRepo({ 'a.txt': 'a\n' })
+    await writeFileIn(repo, 'a.txt', 'a changed\n')
+    await writeFileIn(repo, 'new.txt', 'brand new\n')
+
+    const result = await collectCommitContext(repo, OPTIONS)
+    const diff = result.sections.find(section => section.title.includes('全部改动 diff'))
+
+    expect(diff?.title).toContain('git diff HEAD')
+    expect(diff?.title).toContain('含未跟踪新文件内容')
+    expect(diff?.body).toContain('+a changed')
+    expect(diff?.body).toContain('+++ b/new.txt')
+    expect(diff?.body).toContain('+brand new')
+    expect(result.summary).toContain('暂存区为空')
+  })
+
+  it('暂存区为空且工作区干净时说明没有改动', async () => {
+    const repo = await createRepo()
+    const result = await collectCommitContext(repo, OPTIONS)
+    const diff = result.sections.find(section => section.title.includes('全部改动 diff'))
+    expect(diff?.body).toContain('没有任何改动')
+  })
+
+  it('仓库尚无提交时附上未跟踪文件内容', async () => {
+    const repo = await createPlainDirectory()
+    await git(repo, ['init', '-b', 'main'])
+    await writeFileIn(repo, 'first.txt', 'hello\n')
+
+    const result = await collectCommitContext(repo, OPTIONS)
+    const diff = result.sections.find(section => section.title.includes('全部改动 diff'))
+
+    expect(diff?.title).toContain('git diff')
+    expect(diff?.body).toContain('+hello')
+  })
 })
 
 describe('collectCommitFastContext', () => {

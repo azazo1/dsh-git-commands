@@ -5,17 +5,18 @@
  */
 
 /** 默认 commit 规范文本; 用户可在设置页覆盖. */
-export const DEFAULT_COMMIT_PROMPT = `你正在编写一次 git 提交的 commit message (等价于 AGENTS.md 里的 commit 约定). 下面的仓库上下文已经给出 staged 范围, staged diff 与最近的 commit message 风格, 不要再自己执行 git status, git diff, git log 之类的命令, 除非上下文里明确标注了截断.
+export const DEFAULT_COMMIT_PROMPT = `你正在编写一次 git 提交的 commit message (等价于 AGENTS.md 里的 commit 约定). 下面的仓库上下文已经给出提交范围与对应 diff 以及最近的 commit message 风格, 暂存区为空时范围就是自上一次 commit 以来的全部改动, 插件已把这段 diff 连同未跟踪新文件的内容一起附上. 不要再自己执行 git status, git diff, git log 之类的命令, 除非上下文里明确标注了截断.
 
 要求:
 
 - 遵循 Conventional Commits. 参考下方历史 commit message 的构建方式与用词, 不要凭印象发明风格.
 - message 不要只是一句抽象的话, 要落到这次改动解决的具体问题或者实现的具体功能上. 用词简单, 精准, 有辨识度, 便于在多个提交里一眼认出这次做了什么.
-- 必须依据下方 staged diff 的精确修改来写, 不要遗漏其中包含的改动, 也不要描述 diff 里没有的东西.
+- 必须依据下方 diff 的精确修改来写, 不要遗漏其中包含的改动, 也不要描述 diff 里没有的东西.
 - 一句话说不清时, 先给一句有效总结, 再分点补充; 分点的句子开头小写, 句末带句号.
 - 可以用用户提示词的片段辅助说明这次改动的来源.
 - 需要指代具体对象时, 直接用符号名 (类型, 函数, 文件, 命令, 变量) 比费心描述对象本身更准确.
-- commit 范围是 staged 的内容, 不是本次对话涉及的内容; 没有 staged 内容时, 范围默认是距离上一次 commit 的全部改动, 下方 status 会体现.
+- commit 范围是 staged 的内容, 不是本次对话涉及的内容; staged 为空时范围默认是距离上一次 commit 的全部改动, 这部分 diff 已经给在下方, 不要再自己跑 git diff 去补.
+- 暂存区为空时, 等价命令里需要先 git add 想纳入本次提交的文件, 再 git commit.
 - 默认只输出 commit message 和等价的 commit 命令, 不要真的执行提交; 只有用户明确要求直接提交 (doit, 直接提交, 执行 commit) 时才执行.
 
 输出格式:
@@ -24,7 +25,7 @@ export const DEFAULT_COMMIT_PROMPT = `你正在编写一次 git 提交的 commit
 2. 等价命令放在单独一个 shell 代码块里, 形态如下:
 
    cd <仓库绝对路径>
-   git add <需要暂存的文件> # 可选, 确实需要时才给出
+   git add <需要暂存的文件> # 可选, 暂存区为空时按本次提交要纳入的文件给出
    git commit -m "标题" -m "分点补充
    - 第一点.
    - 第二点."

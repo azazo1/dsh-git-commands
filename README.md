@@ -18,7 +18,7 @@ dsh plugin --profile web add azazo1/dsh-git-commands
 
 | 命令 | 参数 | 触发时采集 (全部只读) |
 |---|---|---|
-| `/commit` | `[path]` | `git status --porcelain`, `git diff --cached --stat`, `git diff --cached`, 最近 N 条完整 commit message |
+| `/commit` | `[path]` | `git status --porcelain`, `git diff --cached --stat`, `git diff --cached` (暂存区为空时改为 `git diff HEAD` 与未跟踪新文件内容), 最近 N 条完整 commit message |
 | `/commit-fast` | `[path]` | `git status --porcelain`, 最近 N 条完整 commit message (不采集 diff) |
 | `/tag` | `[version] [path]` | 最近 5 个 tag, 上一个 tag 以来的提交 (完整 message), 项目版本文件, 工作区状态 |
 | `/push` | `[path]` | 分支, 上游, 领先/落后数量, 远端列表, 尚未推送的提交 |
@@ -29,6 +29,8 @@ dsh plugin --profile web add azazo1/dsh-git-commands
 - 路径可以是绝对路径, 也可以是相对当前会话工作目录的路径; 省略时使用会话工作目录; `~` 与 `~\` 都会展开成家目录.
 - `/tag` 额外接受一个可选版本号 (`0.2.0` 或 `v0.2.0`), 顺序为 `/tag <版本号> <路径>`.
 - `/repo-create` 的目标目录可以还没有初始化 git; 其余命令要求目标已经是 git 仓库.
+
+`/commit` 在暂存区为空时按约定把提交范围回退到自上一次 commit 以来的全部改动: 采集命令换成 `git diff HEAD --stat` 与 `git diff HEAD` (仓库尚无提交时用 `git diff`), 并把未跟踪的新文件渲染成新增文件的 diff 片段附在末尾, 两者共用同一个 `diffLineLimit` 上限, 因此规范文本不再需要模型自己去跑 `git diff`.
 
 命令不会真的执行写操作: 采集只跑只读命令, 生成的 commit message, tag, push 与建仓库动作由模型在会话里按规范执行 (远端写操作会走提权).
 
@@ -62,7 +64,7 @@ dsh plugin --profile web add azazo1/dsh-git-commands
 
 ## 隐私说明
 
-注入的内容会写进会话日志并随下一次模型请求发送, 因此 staged diff 与 README 开头等内容会和正常对话一样离开本机; 这些内容本来就在仓库里, 插件不额外读取仓库之外的文件. diff 过大时会按 `diffLineLimit` 截断并在文本中标注.
+注入的内容会写进会话日志并随下一次模型请求发送, 因此 staged diff, 暂存区为空时附上的全部改动 (含未跟踪文本文件内容) 与 README 开头等内容会和正常对话一样离开本机; 这些内容本来就在仓库里, 插件不额外读取仓库之外的文件. 未跟踪文件只读取 `.gitignore` 未忽略的普通文本文件, 二进制与超过 64 KiB 的只列名字; diff 过大时会按 `diffLineLimit` 截断并在文本中标注.
 
 ## 开发
 

@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { runGit, runGitOrThrow } from './exec.ts'
 import { readProjectHints, readVersionFiles, type ProjectHints, type VersionFileInfo } from './probe.ts'
 import { truncateLines } from './truncate.ts'
+import { readUntrackedPatch } from './untracked.ts'
 
 /** 一条 commit 的摘要. */
 export interface CommitEntry {
@@ -55,6 +56,9 @@ const RECORD = '\u001e'
 /** log 输出格式: hash, 日期, 标题, 正文. */
 const LOG_FORMAT = `%h${FIELD}%ad${FIELD}%s${FIELD}%b${RECORD}`
 
+/** 仓库还没有任何提交时, HEAD 相关读取给出的占位文本. */
+const NO_COMMITS = '(尚无提交)'
+
 /** 把 git 输出切成非空行. */
 function linesOf(text: string): string[] {
   return text.split('\n').map(line => line.trimEnd()).filter(line => line.length > 0)
@@ -77,13 +81,13 @@ async function readBranch(repo: string, signal?: AbortSignal): Promise<string> {
   const branch = (await runGit(repo, ['rev-parse', '--abbrev-ref', 'HEAD'], { signal })).stdout.trim()
   if (branch.length > 0 && branch !== 'HEAD') return branch
   const head = (await runGit(repo, ['rev-parse', '--short', 'HEAD'], { signal })).stdout.trim()
-  return head.length === 0 ? '(尚无提交)' : `detached HEAD ${head}`
+  return head.length === 0 ? NO_COMMITS : `detached HEAD ${head}`
 }
 
 /** 读 HEAD 的短 hash. */
 async function readHead(repo: string, signal?: AbortSignal): Promise<string> {
   const head = (await runGit(repo, ['rev-parse', '--short', 'HEAD'], { signal })).stdout.trim()
-  return head.length === 0 ? '(尚无提交)' : head
+  return head.length === 0 ? NO_COMMITS : head
 }
 
 /**
@@ -132,7 +136,10 @@ async function readStatus(repo: string, signal?: AbortSignal): Promise<string> {
 }
 
 /**
- * 采集 `/commit` 需要的上下文: staged 范围, staged diff 与历史风格.
+ * 采集 `/commit` 需要的上下文: 提交范围, 对应 diff 与历史风格.
+ *
+ * 暂存区为空时, 提交范围按约定回退到自上一次 commit 以来的全部改动: 已跟踪文件用
+ * `git diff HEAD` 采集, 未跟踪新文件的内容另行附上, 全部改动共用一个行数上限.
  *
  * @param repo - 仓库根.
  * @param options - 采集上限与取消信号.
@@ -143,17 +150,39 @@ export async function collectCommitContext(repo: string, options: CollectOptions
   const branch = await readBranch(repo, signal)
   const head = await readHead(repo, signal)
   const status = await readStatus(repo, signal)
-  const stagedStat = await runGitOrThrow(repo, ['diff', '--cached', '--stat', '--no-color'], { signal })
-  const stagedDiff = await runGitOrThrow(repo, ['diff', '--cached', '--no-color'], { signal })
-  const history = await readHistory(repo, options.logLimit, signal)
   const stagedFiles = linesOf(status).filter(line => /^[MADRCU]/u.test(line)).length
-  const diff = truncateLines(stagedDiff, options.diffLineLimit)
+  const wholeTree = stagedFiles === 0
+  const unborn = head === NO_COMMITS
+  const range = wholeTree ? (unborn ? [] : ['HEAD']) : ['--cached']
+  const stagedCommand = 'git diff --cached'
+  const wholeCommand = unborn ? 'git diff' : 'git diff HEAD'
+  const scopeLabel = unborn ? '仓库尚无提交时的全部改动' : '自上一次 commit 以来的全部改动'
+
+  const stat = await runGitOrThrow(repo, ['diff', ...range, '--stat', '--no-color'], { signal })
+  const trackedDiff = await runGitOrThrow(repo, ['diff', ...range, '--no-color'], { signal })
+  const untracked = wholeTree ? await readUntrackedPatch(repo, { signal }) : null
+  const untrackedIncluded = untracked?.included ?? 0
+  const untrackedTotal = untracked?.total ?? 0
+  const history = await readHistory(repo, options.logLimit, signal)
+  const changedFiles = linesOf(status).length
+  const statTitle = wholeTree
+    ? `${scopeLabel}统计 (${wholeCommand} --stat)`
+    : '已暂存改动统计 (git diff --cached --stat)'
+  const diffTitle = wholeTree
+    ? `${scopeLabel} diff (${wholeCommand}${untrackedIncluded > 0 ? ', 含未跟踪新文件内容' : ''})`
+    : '已暂存 diff (git diff --cached)'
+  const combined = [trackedDiff, untracked?.text ?? '']
+    .filter(part => part.trim().length > 0)
+    .join('\n\n')
+  const diff = truncateLines(combined, options.diffLineLimit)
   const diffBody = diff.totalLines === 0
-    ? '(没有任何已暂存的改动)'
+    ? wholeTree
+      ? unborn ? '(暂存区为空, 仓库里还没有任何改动)' : '(暂存区为空, 自上一次 commit 以来没有任何改动)'
+      : '(没有任何已暂存的改动)'
     : [
         diff.text,
         ...diff.truncated
-          ? [`...(已截断: 只给出前 ${String(diff.shownLines)} 行, 共 ${String(diff.totalLines)} 行; 需要看剩余部分时再自己执行 git diff --cached)`]
+          ? [`...(已截断: 只给出前 ${String(diff.shownLines)} 行, 共 ${String(diff.totalLines)} 行; 需要看剩余部分时再自己执行 ${wholeTree ? wholeCommand : stagedCommand})`]
           : [],
       ].join('\n')
 
@@ -161,11 +190,16 @@ export async function collectCommitContext(repo: string, options: CollectOptions
     facts: [`仓库: ${repo}`, `分支: ${branch}`, `HEAD: ${head}`],
     sections: [
       { title: '工作区状态 (git status --porcelain=v1 -uall)', body: orEmpty(status, '(工作区干净)') },
-      { title: '已暂存改动统计 (git diff --cached --stat)', body: orEmpty(stagedStat, '(没有已暂存的改动)') },
-      { title: '已暂存 diff (git diff --cached)', body: diffBody },
+      {
+        title: statTitle,
+        body: orEmpty(stat, wholeTree ? '(暂存区为空, 没有可统计的改动)' : '(没有已暂存的改动)'),
+      },
+      { title: diffTitle, body: diffBody },
       { title: `最近 ${String(options.logLimit)} 条 commit message (风格参考)`, body: renderHistory(history) },
     ],
-    summary: `已暂存 ${String(stagedFiles)} 个文件, staged diff ${String(diff.totalLines)} 行, 历史 ${String(history.length)} 条`,
+    summary: wholeTree
+      ? `暂存区为空, 已按全部改动采集: 改动 ${String(changedFiles)} 项, 未跟踪 ${String(untrackedIncluded)}/${String(untrackedTotal)} 个附上内容, diff ${String(diff.totalLines)} 行, 历史 ${String(history.length)} 条`
+      : `已暂存 ${String(stagedFiles)} 个文件, staged diff ${String(diff.totalLines)} 行, 历史 ${String(history.length)} 条`,
   }
 }
 
